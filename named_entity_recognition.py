@@ -3,18 +3,30 @@
 @author: Shubham
 """
 
+import pycrfsuite
+import numpy as np
+from sklearn.metrics import classification_report
 from bs4 import BeautifulSoup as bs
 from bs4.element import Tag
 import codecs
 import nltk
 from sklearn.model_selection import train_test_split
-import pycrfsuite
-import numpy as np
-from sklearn.metrics import classification_report
 
 #Read data file and parse the XML
 with codecs.open('reuters.xml', 'r', 'utf-8') as infile:
     soup = bs(infile, 'html5lib')
+    
+def contains_hyphen(word):
+    if '-' in word:
+        return True
+    else:
+        return False
+    
+def contains_underscore(word):
+    if '_' in word:
+        return True
+    else:
+        return False
     
 docs = []
 for element in soup.find_all('document'):
@@ -23,9 +35,9 @@ for element in soup.find_all('document'):
     for child in element.find('textwithnamedentities').children:
         if type(child) == Tag and child.name != None:
             if child.name == 'namedentityintext':
-                label = 'N'
+                label = 'NE'
             else:
-                label = 'I'
+                label = 'OE'
         
         if child.name != None:
             for w in child.text.split(' '):
@@ -59,6 +71,8 @@ def word2features(doc, i):
             'word.isupper=%s' % word.isupper(),
             'word.istitle=%s' % word.istitle(),
             'word.isdigit=%s' % word.isdigit(),
+            'word.hyphen=%s' % contains_hyphen(word),
+            'word.underscore=%s' % contains_underscore(word),
             'postag=' + postag
             ]
     
@@ -72,6 +86,8 @@ def word2features(doc, i):
                 '-1:word.isupper=%s' % word1.isupper(),
                 '-1:word.istitle=%s' % word1.istitle(),
                 '-1:word.isdigit=%s' % word1.isdigit(),
+                '-1:word.hyphen=%s' % contains_hyphen(word1),
+                '-1:word.underscore=%s' % contains_underscore(word1),
                 '-1:postag=' + postag1
                 ])
         
@@ -89,6 +105,8 @@ def word2features(doc, i):
                 '+1:word.isupper=%s' % word1.isupper(),
                 '+1:word.istitle=%s' % word1.istitle(),
                 '+1:word.isdigit=%s' % word1.isdigit(),
+                '+1:word.hyphen=%s' % contains_hyphen(word1),
+                '+1:word.underscore=%s' % contains_underscore(word1),
                 '+1:postag=' + postag1
                 ])
         
@@ -114,19 +132,19 @@ X_train, X_test, y_train, y_test = train_test_split(X, y, test_size = 0.2)
 trainer = pycrfsuite.Trainer(verbose = True)
 
 #Submit training data to the trainer
-for xseq, yseq in zip(X_train, y_train):
-    trainer.append(xseq, yseq)
+for x, y in zip(X_train, y_train):
+    trainer.append(x, y)
 
 #Set the parameters of the model 
 trainer.set_params({
         #coefficient for L1 penalty
-        'c1': 0.1,
+        'c1': 0.5,
         
-        #coefficient for L1 penalty
-        'c2': 0.01,
+        #coefficient for L2 penalty
+        'c2': 0.05,
         
         #maximum number of iterations
-        'max_iterations': 200,
+        'max_iterations': 500,
         
         #whether to include transitions that are possible, but not observed
         'feature.possible_transitions': True
@@ -139,12 +157,12 @@ tagger.open('crf.model')
 
 y_pred = [tagger.tag(xseq) for xseq in X_test]
 
-i = 12
+i = 5
 for x, y in zip(y_pred[i], [x[1].split('=')[1] for x in X_test[i]]):
     print('%s (%s)' % (y, x))
     
 #Create a mapping of labels to indices
-labels = {"N": 1, "I": 0}
+labels = {"NE": 1, "OE": 0}
 
 #Convert the sequences of tags into a 1-dimensional array  
 predictions = np.array([labels[tag] for row in y_pred for tag in row])  
